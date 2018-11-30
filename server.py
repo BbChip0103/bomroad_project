@@ -32,12 +32,13 @@ def index(name=None):
 @app.route('/main')
 def main(name=None):
     return render_template('main.html', name=name)
+
 @app.route('/describe_image', methods = ['POST'])
 def describe_image():
     binary_image = request.data
     try:
         # start_time = time.time()
-        result = use_vision_api(binary_image)
+        result = use_describe_api(binary_image)
         result = json.loads(result)
         result = translate_text(result)
         result = json.dumps(result)
@@ -47,12 +48,28 @@ def describe_image():
     except Exception as e:
         print(str(e), file=sys.stderr)
         return 'error'
+    
+@app.route('/find_celebrity', methods = ['POST'])
+def find_celebrity():
+    binary_image = request.data
+    try:
+        # start_time = time.time()
+        result = use_analyze_api(binary_image)
+        result = json.loads(result)
+        result = json.dumps(result)
+        # print(time.time() - start_time, file=sys.stderr)
+        # print(result, file=sys.stderr)
+        return result
+    except Exception as e:
+        print(str(e), file=sys.stderr)
+        return 'Celebrity Not Found'
 
-def use_vision_api(image):
-    api_url = "https://eastasia.api.cognitive.microsoft.com/vision/v1.0/describe"
+
+def use_describe_api(image):
+    api_url = "https://eastasia.api.cognitive.microsoft.com/vision/v2.0/describe"
     headers = {
         'Content-Type': 'application/octet-stream',
-        'Ocp-Apim-Subscription-Key': config['vision_key'],
+        'Ocp-Apim-Subscription-Key': config['vision_key']
     }
     params = {'maxCandidates': '1'}
     data = image
@@ -61,6 +78,22 @@ def use_vision_api(image):
     resp.raise_for_status()
     return resp.text
 
+def use_analyze_api(image):
+    api_url = "https://eastasia.api.cognitive.microsoft.com/vision/v2.0/analyze"
+    headers = {
+        'Content-Type': 'application/octet-stream',
+        'Ocp-Apim-Subscription-Key': config['vision_key']
+    }
+    params = {
+        'visualFeatures':'Categories',
+        'details': 'Celebrities',
+        'language': 'en'
+    }
+    data = image
+
+    resp = requests.post(api_url, params=params, headers=headers, data=data)
+    resp.raise_for_status()
+    return resp.text
 
 def translate_text(image_data):
     result = image_data

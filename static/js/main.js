@@ -19,13 +19,17 @@ var ignore_onend;
 var start_timestamp;
 var desc_img_flag = false;
 
+var ask_type = {'unknown':0, 'describe':1, 'celebrity':2};
 
 snapshot_button.on( "click", function() {
   if (recognizing) {
     recognition.stop();
     // return;
   }
+
   take_picture();
+  // canvas.toBlob(describeImage);
+  canvas.toBlob(findCelebrity);
 });
 
 rec_button.on( "click", function() {
@@ -51,7 +55,6 @@ function take_picture() {
   canvas.height = video.videoHeight;
   canvas.getContext('2d').
     drawImage(video, 0, 0, canvas.width, canvas.height);
-  canvas.toBlob(describeImage)
 }
 
 function describeImage(file){
@@ -93,6 +96,60 @@ function getImageData(result){
  }
 
  return {"text":text, "accuracy":accuracy, "tags":tags}
+}
+
+function findCelebrity(file){
+  var server_url = 'https://52.231.65.117:8080/'
+  $.ajax({
+    // url: server_url+'describe_image',
+    url: 'find_celebrity',
+    type: "post",
+    data: file,
+    processData: false,
+    contentType: false,
+    success: function(data){
+      console.log(data);
+      var result = JSON.parse(data);
+      var celeb_data = getCelebData(result);
+      $('#img-desc-text').text('Explain : '+celeb_data['text']);
+      $('#img-desc-accuracy').text('Accuracy : '+celeb_data['accuracy']+'%');
+      speakText(celeb_data['text']);
+      desc_img_flag = false;
+
+      var ctx = canvas.getContext('2d')
+      ctx.beginPath();
+      ctx.lineWidth="5";
+      ctx.strokeStyle="red";
+      ctx.rect(celeb_data['face_rectangle']['left'], celeb_data['face_rectangle']['top'], 
+                celeb_data['face_rectangle']['width'], celeb_data['face_rectangle']['height']);
+      ctx.stroke();
+    },
+    error:function(data){
+      // TODO
+    }
+  });
+}
+
+function getCelebData(result){
+  var text = '';
+  var accuracy = '';
+  var face_rectangle = {};
+
+  try {
+    for (var inform of result["categories"]){
+      if(inform["name"].search("people") != -1 && inform["detail"]["celebrities"].length > 0){
+        text = inform["detail"]["celebrities"][0]["name"];
+        accuracy = inform["detail"]["celebrities"][0]["confidence"];
+        face_rectangle = inform["detail"]["celebrities"][0]["faceRectangle"];
+      }
+    }
+
+  }
+  catch (e) {
+   console.log(e); // pass exception object to error handler
+ }
+
+ return {"text":text, "accuracy":accuracy, "face_rectangle":face_rectangle}
 }
 
 function speakText(text) {
@@ -195,19 +252,35 @@ recognition.onresult = function(event) {
   console.log(interim_transcript);
   textArea.text(interim_transcript);
 
-  if (isKeywordInText(interim_transcript) == true){
+  var ask_ret = isKeywordInText(interim_transcript);
+  if (ask_ret == ask_type['describe']){
     recognition.stop();
     take_picture();
+    canvas.toBlob(describeImage);
   }
+  else if (ask_ret == ask_type['celebrity']){
+    recognition.stop();
+    take_picture();
+    canvas.toBlob(findCelebrity);
+  }
+
 };
 
 function isKeywordInText(text){
-  var keyword_list = ['뭐야', '뭐냐', '상황', '일이야', '일 있나', '일 있어'];
+  var describe_keyword_list = ['뭐야', '뭐냐', '상황', '일이야', '일 있나', '일 있어'];
+  var celeb_keyword_list = ['누구', '연예인'];
 
-  for (var keyword of keyword_list){
+  for (var keyword of describe_keyword_list){
     if (text.search(keyword) != -1){
-      return true
+      return ask_type['describe'];
     }
   }
-  return false
+
+  for (var keyword of celeb_keyword_list){
+    if (text.search(keyword) != -1){
+      return ask_type['celebrity'];
+    }
+  }
+
+  return ask_type['unknown'];
 }
